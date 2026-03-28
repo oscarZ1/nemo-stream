@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>StreamFocus — Live Session</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #090b0f;
+      --surface: rgba(15,19,24,0.75);
+      --border: rgba(30,37,48,0.6);
+      --neon: #00f5a0;
+      --neon2: #00d9f5;
+      --warn: #f5a623;
+      --red: #ff3b5c;
+      --text: #e8edf5;
+      --muted: #5a6478;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Background image layer */
+    #bgLayer {
+      position: fixed;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      transition: opacity 1.5s ease;
+      opacity: 0;
+      z-index: 0;
+    }
+
+    /* Dark overlay */
+    #bgOverlay {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(
+        135deg,
+        rgba(9,11,15,0.82) 0%,
+        rgba(9,11,15,0.55) 50%,
+        rgba(9,11,15,0.82) 100%
+      );
+      z-index: 1;
+    }
+
+    /* Scanlines */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.12) 2px,
+        rgba(0,0,0,0.12) 4px
+      );
+      pointer-events: none;
+      z-index: 200;
+    }
+
+    /* Grid overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0, 245, 160, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 245, 160, 0.025) 1px, transparent 1px);
+      background-size: 40px 40px;
+      animation: gridDrift 20s linear infinite;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    @keyframes gridDrift {
+      from { transform: translateY(0); }
+      to { transform: translateY(40px); }
+    }
+
+    /* Loading state */
+    #loadingScreen {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 500;
+      transition: opacity 0.8s ease;
+    }
+
+    .loader-ring {
+      width: 56px;
+      height: 56px;
+      border: 2px solid var(--border);
+      border-top-color: var(--neon);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 20px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loader-text {
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      animation: blink 1.5s ease infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Main content */
+    #mainContent {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 32px;
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 1s ease 0.3s, transform 1s cubic-bezier(0.16,1,0.3,1) 0.3s;
+    }
+
+    #mainContent.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Live badge */
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 59, 92, 0.15);
+      border: 1px solid rgba(255, 59, 92, 0.45);
+      color: var(--red);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      padding: 6px 14px;
+      border-radius: 3px;
+      margin-bottom: 36px;
+      text-transform: uppercase;
+      backdrop-filter: blur(8px);
+    }
+
+    .live-dot {
+      width: 7px; height: 7px;
+      background: var(--red);
+      border-radius: 50%;
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(255,59,92,0.5); }
+      50% { opacity: 0.7; transform: scale(0.7); box-shadow: 0 0 0 4px rgba(255,59,92,0); }
+    }
+
+    /* Session name display */
+    .session-label {
+      font-size: 10px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    #sessionTitle {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: clamp(40px, 9vw, 72px);
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.01em;
+      margin-bottom: 28px;
+      text-shadow: 0 0 40px rgba(0,245,160,0.3);
+    }
+
+    #sessionTitle .glow {
+      color: var(--neon);
+      text-shadow: 0 0 30px rgba(0,245,160,0.6), 0 0 80px rgba(0,245,160,0.2);
+    }
+
+    /* The hero message */
+    .hero-message {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(0, 245, 160, 0.07);
+      border: 1px solid rgba(0, 245, 160, 0.25);
+      border-radius: 8px;
+      padding: 20px 32px;
+      margin-bottom: 40px;
+      backdrop-filter: blur(12px);
+      animation: messagePop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 1.2s both;
+    }
+
+    @keyframes messagePop {
+      from { opacity: 0; transform: scale(0.88); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .hero-icon {
+      font-size: 28px;
+      animation: spin-slow 4s linear infinite;
+    }
+
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .hero-message p {
+      font-size: clamp(14px, 2.5vw, 18px);
+      letter-spacing: 0.04em;
+      color: var(--neon);
+      font-weight: 700;
+      text-transform: uppercase;
+      font-family: 'Rajdhani', sans-serif;
+    }
+
+    /* Stats row */
+    .stats-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 48px;
+      flex-wrap: wrap;
+      justify-content: center;
+      animation: fadeUp 0.6s ease 1.6s both;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .stat-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 18px;
+      backdrop-filter: blur(8px);
+      text-align: center;
+      min-width: 100px;
+    }
+
+    .stat-chip .val {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--neon2);
+      display: block;
+      line-height: 1;
+    }
+
+    .stat-chip .lbl {
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-top: 4px;
+      display: block;
+    }
+
+    #elapsedTime .val { color: var(--warn); }
+
+    /* Image credit */
+    #imageStatus {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      margin-bottom: 32px;
+      animation: fadeUp 0.6s ease 1.8s both;
+    }
+
+    #imageStatus span { color: var(--neon2); }
+
+    /* Back button */
+    .back-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      animation: fadeUp 0.6s ease 2s both;
+    }
+
+    .back-btn:hover {
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    /* Corner decorations */
+    .corner {
+      position: fixed;
+      width: 60px;
+      height: 60px;
+      z-index: 50;
+      opacity: 0.4;
+    }
+
+    .corner-tl { top: 20px; left: 20px; border-top: 2px solid var(--neon); border-left: 2px solid var(--neon); }
+    .corner-tr { top: 20px; right: 20px; border-top: 2px solid var(--neon); border-right: 2px solid var(--neon); }
+    .corner-bl { bottom: 20px; left: 20px; border-bottom: 2px solid var(--neon); border-left: 2px solid var(--neon); }
+    .corner-br { bottom: 20px; right: 20px; border-bottom: 2px solid var(--neon); border-right: 2px solid var(--neon); }
+
+    /* Chat ticker at bottom */
+    #chatTicker {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(9,11,15,0.85);
+      border-top: 1px solid var(--border);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 150;
+      backdrop-filter: blur(8px);
+      opacity: 0;
+      animation: slideUp 0.5s ease 2.2s both;
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .ticker-label {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      color: var(--warn);
+      text-transform: uppercase;
+      white-space: nowrap;
+      font-weight: 700;
+    }
+
+    .ticker-scroll {
+      overflow: hidden;
+      flex: 1;
+    }
+
+    #tickerText {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      animation: ticker 18s linear infinite;
+      display: inline-block;
+    }
+
+    @keyframes ticker {
+      from { transform: translateX(100vw); }
+      to { transform: translateX(-100%); }
+    }
+
+    /* Error state */
+    .error-note {
+      font-size: 11px;
+      color: var(--warn);
+      margin-top: 8px;
+    }
+
+    /* ── Mini Music Player ─────────────────────────────────────── */
+    #musicPlayer {
+      position: fixed;
+      bottom: 56px; /* above ticker */
+      right: 20px;
+      z-index: 160;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      animation: fadeUp 0.5s ease 2.5s both;
+    }
+
+    /* Collapsed pill — always visible */
+    #musicPill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(9,11,15,0.88);
+      border: 1px solid rgba(0,245,160,0.25);
+      border-radius: 30px;
+      padding: 8px 14px 8px 10px;
+      cursor: pointer;
+      backdrop-filter: blur(14px);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      user-select: none;
+    }
+
+    #musicPill:hover {
+      border-color: rgba(0,245,160,0.55);
+      box-shadow: 0 0 16px rgba(0,245,160,0.15);
+    }
+
+    /* Animated equalizer bars (shown when playing) */
+    .eq-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 16px;
+      width: 16px;
+    }
+
+    .eq-bar {
+      width: 3px;
+      background: var(--neon);
+      border-radius: 2px;
+      animation: eqBounce 0.8s ease infinite;
+      transform-origin: bottom;
+    }
+
+    .eq-bar:nth-child(1) { animation-delay: 0s;    height: 40%; }
+    .eq-bar:nth-child(2) { animation-delay: 0.15s; height: 80%; }
+    .eq-bar:nth-child(3) { animation-delay: 0.3s;  height: 55%; }
+
+    @keyframes eqBounce {
+      0%, 100% { transform: scaleY(1); }
+      50%       { transform: scaleY(0.25); }
+    }
+
+    #musicPlayer:not(.playing) .eq-bars .eq-bar {
+      animation-play-state: paused;
+    }
+
+    .music-pill-icon {
+      font-size: 14px;
+      line-height: 1;
+    }
+
+    #pillLabel {
+      font-size: 11px;
+      color: var(--text);
+      letter-spacing: 0.04em;
+      max-width: 120px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #pillChevron {
+      font-size: 10px;
+      color: var(--muted);
+      transition: transform 0.3s;
+      margin-left: 2px;
+    }
+
+    #musicPlayer.expanded #pillChevron {
+      transform: rotate(180deg);
+    }
+
+    /* Expanded panel */
+    #musicPanel {
+      width: 260px;
+      background: rgba(9,11,15,0.92);
+      border: 1px solid rgba(0,245,160,0.2);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 8px;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,245,160,0.05);
+      transform-origin: bottom right;
+      transform: scale(0.92) translateY(8px);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1), opacity 0.2s ease;
+    }
+
+    #musicPlayer.expanded #musicPanel {
+      transform: scale(1) translateY(0);
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .mp-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .mp-title {
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--neon);
+      font-weight: 700;
+    }
+
+    .mp-genre {
+      font-size: 10px;
+      color: var(--muted);
+      font-style: italic;
+      margin-bottom: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Mini progress */
+    .mp-progress {
+      height: 2px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .mp-progress-fill {
+      height: 100%;
+      background: var(--neon);
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.3s linear;
+      box-shadow: 0 0 6px var(--neon);
+    }
+
+    .mp-time {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      color: var(--muted);
+      margin-bottom: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Controls row */
+    .mp-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .mp-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s, transform 0.1s;
+    }
+
+    .mp-btn:hover { color: var(--text); transform: scale(1.15); }
+    .mp-btn:active { transform: scale(0.9); }
+    .mp-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none !important; }
+
+    .mp-btn.primary {
+      width: 38px; height: 38px;
+      background: var(--neon);
+      color: #090b0f;
+      border-radius: 50%;
+      box-shadow: 0 0 14px rgba(0,245,160,0.4);
+    }
+
+    .mp-btn.primary:hover { background: #33ffb5; box-shadow: 0 0 22px rgba(0,245,160,0.6); }
+    .mp-btn.primary:disabled { background: rgba(255,255,255,0.1); color: var(--muted); box-shadow: none; }
+
+    .mp-loop-active { color: var(--neon) !important; }
+
+    /* Generate button inside panel */
+    .mp-gen-btn {
+      width: 100%;
+      background: rgba(0,245,160,0.1);
+      border: 1px solid rgba(0,245,160,0.25);
+      color: var(--neon);
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 9px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+
+    .mp-gen-btn:hover {
+      background: rgba(0,245,160,0.18);
+      box-shadow: 0 0 12px rgba(0,245,160,0.15);
+    }
+
+    .mp-gen-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .mp-spinner {
+      width: 10px; height: 10px;
+      border: 1.5px solid rgba(0,245,160,0.3);
+      border-top-color: var(--neon);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    .mp-spinner.on { display: block; }
+
+    .mp-status {
+      text-align: center;
+      font-size: 9px;
+      color: var(--muted);
+      margin-top: 8px;
+      letter-spacing: 0.05em;
+      min-height: 14px;
+    }
+
+    .mp-status.ok  { color: var(--neon); }
+    .mp-status.err { color: var(--red); }
+  </style>
+</head>
+<body>
+
+  <!-- Corner accents -->
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+
+  <!-- Background layers -->
+  <div id="bgLayer"></div>
+  <div id="bgOverlay"></div>
+
+  <!-- Loading screen -->
+  <div id="loadingScreen">
+    <div class="loader-ring"></div>
+    <div class="loader-text" id="loadingMsg">Generating theme...</div>
+  </div>
+
+  <!-- Main content -->
+  <div id="mainContent">
+    <div class="live-badge">
+      <span class="live-dot"></span>
+      Session Active
+    </div>
+
+    <div class="session-label">Current Session</div>
+    <div id="sessionTitle">
+      <span class="glow" id="sessionNameDisplay">—</span>
+    </div>
+
+    <div class="hero-message">
+      <span class="hero-icon">🎮</span>
+      <p>You have started this session</p>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-chip" id="elapsedTime">
+        <span class="val">00:00</span>
+        <span class="lbl">Elapsed</span>
+      </div>
+      <div class="stat-chip">
+        <span class="val" id="statusDisplay">IDLE</span>
+        <span class="lbl">Status</span>
+      </div>
+      <div class="stat-chip">
+        <span class="val" id="checksDisplay">0</span>
+        <span class="lbl">AI Checks</span>
+      </div>
+    </div>
+
+    <div id="imageStatus">Theme generated by <span>Nano Banana AI</span></div>
+
+    <button class="back-btn" onclick="window.location.href='index.html'">← End Session</button>
+  </div>
+
+  <!-- ── Mini Music Player Widget ── -->
+  <div id="musicPlayer">
+    <!-- Expanded panel -->
+    <div id="musicPanel">
+      <div class="mp-header">
+        <span class="mp-title">🎵 Session Music</span>
+        <span style="font-size:9px;color:var(--muted);letter-spacing:0.06em">Lyria AI</span>
+      </div>
+      <div class="mp-genre" id="mpGenre">AI-Curated · Session Optimized</div>
+
+      <div class="mp-progress" id="mpProgressTrack">
+        <div class="mp-progress-fill" id="mpProgressFill"></div>
+      </div>
+      <div class="mp-time">
+        <span id="mpTimeCurrent">0:00</span>
+        <span id="mpTimeDuration">—</span>
+      </div>
+
+      <div class="mp-controls">
+        <button class="mp-btn" id="mpRestartBtn" title="Restart" disabled>
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+        </button>
+        <button class="mp-btn primary" id="mpPlayBtn" disabled>
+          <svg id="mpIconPlay" width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          <svg id="mpIconPause" width="16" height="16" fill="currentColor" viewBox="0 0 24 24" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+        </button>
+        <button class="mp-btn" id="mpLoopBtn" title="Loop">
+          <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+        </button>
+      </div>
+
+      <button class="mp-gen-btn" id="mpGenBtn">
+        <div class="mp-spinner" id="mpSpinner"></div>
+        <span id="mpGenText">Generate Session Music</span>
+      </button>
+      <div class="mp-status" id="mpStatus"></div>
+    </div>
+
+    <!-- Collapsed pill — always visible -->
+    <div id="musicPill">
+      <div class="eq-bars">
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+        <div class="eq-bar"></div>
+      </div>
+      <span id="pillLabel">Session Music</span>
+      <span id="pillChevron">▲</span>
+    </div>
+  </div>
+
+  <audio id="mpAudio" preload="auto"></audio>
+
+  <!-- Chat ticker -->
+  <div id="chatTicker">
+    <span class="ticker-label">💬 Chat</span>
+    <div class="ticker-scroll">
+      <span id="tickerText">Waiting for AI analysis... get ready to be judged 👀</span>
+    </div>
+  </div>
+
+  <script>
+    const sessionName = localStorage.getItem('sessionName') || 'Focus Session';
+    document.getElementById('sessionNameDisplay').textContent = sessionName;
+    document.title = `StreamFocus — ${sessionName}`;
+
+    const loadingMessages = [
+      'Generating theme...',
+      'Nano Banana painting your vibe...',
+      'Asking the AI for a sick background...',
+      'Almost there...',
+    ];
+
+    let loadStep = 0;
+    const loadMsgEl = document.getElementById('loadingMsg');
+    const loadInterval = setInterval(() => {
+      loadStep = (loadStep + 1) % loadingMessages.length;
+      loadMsgEl.textContent = loadingMessages[loadStep];
+    }, 1200);
+
+    // === GENERATE BACKGROUND IMAGE VIA NANO BANANA (Pollinations.ai) ===
+    async function generateBackground() {
+      const prompt = encodeURIComponent(
+        `cinematic atmospheric environment for a "${sessionName}" vibe, dramatic lighting, moody aesthetic, dark background, professional studio, highly detailed, 4k, no text, no people`
+      );
+
+      // Using Pollinations.ai — free, no API key needed, dubbed "Nano Banana" in the community
+      const imageUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1920&height=1080&nologo=true&seed=${Date.now()}`;
+
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(imageUrl);
+        img.onerror = () => reject(new Error('Image failed to load'));
+        img.src = imageUrl;
+      });
+    }
+
+    async function init() {
+      try {
+        const url = await generateBackground();
+
+        clearInterval(loadInterval);
+
+        // Apply background
+        const bg = document.getElementById('bgLayer');
+        bg.style.backgroundImage = `url("${url}")`;
+        bg.style.opacity = '1';
+
+        // Fade out loading screen
+        const loading = document.getElementById('loadingScreen');
+        loading.style.opacity = '0';
+        setTimeout(() => {
+          loading.style.display = 'none';
+          const content = document.getElementById('mainContent');
+          content.classList.add('visible');
+        }, 800);
+
+      } catch (err) {
+        // Fallback: use a gradient based on session name
+        clearInterval(loadInterval);
+        const hue = [...sessionName].reduce((a, c) => a + c.charCodeAt(0), 0) % 360;
+        document.body.style.background = `
+          radial-gradient(ellipse at 20% 20%, hsl(${hue}, 60%, 8%) 0%, #090b0f 60%),
+          radial-gradient(ellipse at 80% 80%, hsl(${(hue + 180) % 360}, 50%, 6%) 0%, transparent 60%)
+        `;
+
+        const loading = document.getElementById('loadingScreen');
+        loading.style.opacity = '0';
+        setTimeout(() => {
+          loading.style.display = 'none';
+          document.getElementById('mainContent').classList.add('visible');
+          document.getElementById('imageStatus').innerHTML = 'Theme: <span>Gradient fallback</span>';
+        }, 600);
+      }
+    }
+
+    // === ELAPSED TIMER ===
+    let seconds = 0;
+    const elapsedEl = document.querySelector('#elapsedTime .val');
+    setInterval(() => {
+      seconds++;
+      const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+      const s = String(seconds % 60).padStart(2, '0');
+      elapsedEl.textContent = `${m}:${s}`;
+    }, 1000);
+
+    // === MOCK AI STATUS CYCLE (until real screenshots come in) ===
+    let checks = 0;
+    const statusEl = document.getElementById('statusDisplay');
+    const checksEl = document.getElementById('checksDisplay');
+    const tickerEl = document.getElementById('tickerText');
+
+    const focusedMessages = [
+      "LUL they're actually working??",
+      "POGGERS locked in let's gooo",
+      "Ngl impressive focus rn PogChamp",
+      "No way they're still going KEKW",
+      "Respect the grind honestly Pog",
+    ];
+
+    const distractedMessages = [
+      "KEKW called it, back to Twitter",
+      "monkaS what are we even watching",
+      "Bro said 'one sec' 30min ago KEKW",
+      "xD this streamer is COOKED",
+      "Pepega get back to work omg",
+    ];
+
+    // Simulate periodic checks
+    setInterval(() => {
+      checks++;
+      checksEl.textContent = checks;
+      const focused = Math.random() > 0.35;
+      statusEl.textContent = focused ? 'FOCUSED' : 'DISTRACTED';
+      statusEl.style.color = focused ? 'var(--neon)' : 'var(--red)';
+
+      const pool = focused ? focusedMessages : distractedMessages;
+      const msgs = pool.sort(() => Math.random() - 0.5).slice(0, 3);
+      tickerEl.textContent = msgs.map(m => `${randomUser()}: ${m}`).join('   •   ');
+      // Reset animation
+      tickerEl.style.animation = 'none';
+      tickerEl.offsetHeight;
+      tickerEl.style.animation = 'ticker 18s linear infinite';
+    }, 8000);
+
+    function randomUser() {
+      const names = ['xX_gamer_Xx', 'TwitchFan99', 'MonkaFace', 'Pogchamp22', 'LuLViewer', 'NotifsOn_', 'hyperion99'];
+      return names[Math.floor(Math.random() * names.length)];
+    }
+
+    // Start
+    init();
+
+    // ── Mini Music Player ──────────────────────────────────────────────────
+    (function() {
+      const player     = document.getElementById('musicPlayer');
+      const pill       = document.getElementById('musicPill');
+      const pillLabel  = document.getElementById('pillLabel');
+      const audio      = document.getElementById('mpAudio');
+      const playBtn    = document.getElementById('mpPlayBtn');
+      const restartBtn = document.getElementById('mpRestartBtn');
+      const loopBtn    = document.getElementById('mpLoopBtn');
+      const iconPlay   = document.getElementById('mpIconPlay');
+      const iconPause  = document.getElementById('mpIconPause');
+      const progFill   = document.getElementById('mpProgressFill');
+      const progTrack  = document.getElementById('mpProgressTrack');
+      const timeCur    = document.getElementById('mpTimeCurrent');
+      const timeDur    = document.getElementById('mpTimeDuration');
+      const genBtn     = document.getElementById('mpGenBtn');
+      const genText    = document.getElementById('mpGenText');
+      const spinner    = document.getElementById('mpSpinner');
+      const status     = document.getElementById('mpStatus');
+      const genreEl    = document.getElementById('mpGenre');
+
+      let isLooping = false;
+      let expanded  = false;
+
+      function detectGenre(n) {
+        n = n.toLowerCase();
+        if (n.includes('study') || n.includes('exam'))    return 'Lo-fi Hip Hop · Soft Piano';
+        if (n.includes('cod') || n.includes('hack'))      return 'Synthwave · Dark Electro';
+        if (n.includes('design') || n.includes('art'))    return 'Ambient · Dreamy Pads';
+        if (n.includes('workout') || n.includes('gym'))   return 'High Energy EDM · 140 BPM';
+        if (n.includes('read') || n.includes('writ'))     return 'Acoustic · Coffee Shop';
+        if (n.includes('focus') || n.includes('grind'))   return 'Minimal Techno · Flow State';
+        if (n.includes('chill') || n.includes('relax'))   return 'Chillhop · Mellow Jazz';
+        return 'AI-Curated · Session Optimized';
+      }
+
+      genreEl.textContent = detectGenre(sessionName);
+      pillLabel.textContent = sessionName.length > 18 ? sessionName.slice(0, 16) + '\u2026' : sessionName;
+
+      pill.addEventListener('click', () => {
+        expanded = !expanded;
+        player.classList.toggle('expanded', expanded);
+      });
+
+      function fmt(s) {
+        if (!s || isNaN(s)) return '0:00';
+        return Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2,'0');
+      }
+
+      audio.addEventListener('play', () => {
+        iconPlay.style.display = 'none';
+        iconPause.style.display = 'block';
+        player.classList.add('playing');
+        const short = sessionName.length > 14 ? sessionName.slice(0,12)+'\u2026' : sessionName;
+        pillLabel.textContent = '\u25B6 ' + short;
+      });
+
+      audio.addEventListener('pause', () => {
+        iconPlay.style.display = 'block';
+        iconPause.style.display = 'none';
+        player.classList.remove('playing');
+        pillLabel.textContent = sessionName.length > 18 ? sessionName.slice(0,16)+'\u2026' : sessionName;
+      });
+
+      audio.addEventListener('ended', () => {
+        iconPlay.style.display = 'block';
+        iconPause.style.display = 'none';
+        player.classList.remove('playing');
+        progFill.style.width = '0%';
+        timeCur.textContent = '0:00';
+        if (isLooping) { audio.currentTime = 0; audio.play(); }
+      });
+
+      audio.addEventListener('timeupdate', () => {
+        if (!audio.duration) return;
+        progFill.style.width = (audio.currentTime / audio.duration * 100) + '%';
+        timeCur.textContent = fmt(audio.currentTime);
+      });
+
+      audio.addEventListener('loadedmetadata', () => {
+        timeDur.textContent = fmt(audio.duration);
+      });
+
+      playBtn.addEventListener('click', () => {
+        audio.paused ? audio.play() : audio.pause();
+      });
+
+      restartBtn.addEventListener('click', () => {
+        audio.currentTime = 0;
+        if (audio.paused) audio.play();
+      });
+
+      loopBtn.addEventListener('click', () => {
+        isLooping = !isLooping;
+        audio.loop = isLooping;
+        loopBtn.classList.toggle('mp-loop-active', isLooping);
+      });
+
+      progTrack.addEventListener('click', (e) => {
+        if (!audio.duration) return;
+        const r = progTrack.getBoundingClientRect();
+        audio.currentTime = ((e.clientX - r.left) / r.width) * audio.duration;
+      });
+
+      async function generateMusic() {
+        genBtn.disabled = true;
+        spinner.classList.add('on');
+        genText.textContent = 'Generating\u2026';
+        status.textContent = 'Composing\u2026';
+        status.className = 'mp-status';
+
+        const msgs = ['Composing\u2026', 'Writing melody\u2026', 'Mixing\u2026', 'Almost done\u2026'];
+        let mi = 0;
+        const iv = setInterval(() => { status.textContent = msgs[++mi % msgs.length]; }, 2000);
+
+        try {
+          const res = await fetch('/api/generate-music', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionName })
+          });
+          clearInterval(iv);
+          if (!res.ok) throw new Error((await res.json()).error || 'Server error');
+          const data = await res.json();
+          const bytes = atob(data.audioBase64);
+          const arr = new Uint8Array(bytes.length);
+          for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+          const blob = new Blob([arr], { type: data.mimeType || 'audio/wav' });
+          if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+          audio.src = URL.createObjectURL(blob);
+          audio.volume = 0.8;
+          playBtn.disabled = false;
+          restartBtn.disabled = false;
+          genText.textContent = 'Regenerate';
+          spinner.classList.remove('on');
+          genBtn.disabled = false;
+          status.textContent = 'Ready \u2713';
+          status.className = 'mp-status ok';
+          setTimeout(() => { if (status.textContent.includes('Ready')) status.textContent = ''; }, 3000);
+          audio.play();
+        } catch(err) {
+          clearInterval(iv);
+          spinner.classList.remove('on');
+          genBtn.disabled = false;
+          genText.textContent = 'Retry';
+          status.textContent = 'Error: ' + err.message;
+          status.className = 'mp-status err';
+        }
+      }
+
+      genBtn.addEventListener('click', generateMusic);
+    })();
+  </script>
+</body>
+</html>

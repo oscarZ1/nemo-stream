@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>StreamFocus — Start Session</title>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #090b0f;
+      --surface: #0f1318;
+      --border: #1e2530;
+      --neon: #00f5a0;
+      --neon2: #00d9f5;
+      --warn: #f5a623;
+      --red: #ff3b5c;
+      --text: #e8edf5;
+      --muted: #5a6478;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Animated grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0, 245, 160, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 245, 160, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      animation: gridDrift 20s linear infinite;
+      pointer-events: none;
+    }
+
+    @keyframes gridDrift {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(40px); }
+    }
+
+    /* Scanlines */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.15) 2px,
+        rgba(0,0,0,0.15) 4px
+      );
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    /* Glow blobs */
+    .blob {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      opacity: 0.12;
+    }
+    .blob-1 {
+      width: 400px; height: 400px;
+      background: var(--neon);
+      top: -100px; left: -100px;
+      animation: blobFloat 8s ease-in-out infinite;
+    }
+    .blob-2 {
+      width: 300px; height: 300px;
+      background: var(--neon2);
+      bottom: -80px; right: -80px;
+      animation: blobFloat 10s ease-in-out infinite reverse;
+    }
+    .blob-3 {
+      width: 200px; height: 200px;
+      background: var(--warn);
+      top: 50%; left: 60%;
+      animation: blobFloat 12s ease-in-out infinite 2s;
+    }
+
+    @keyframes blobFloat {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(20px, -20px) scale(1.05); }
+      66% { transform: translate(-10px, 15px) scale(0.95); }
+    }
+
+    .container {
+      position: relative;
+      z-index: 10;
+      width: min(520px, 92vw);
+      animation: fadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(32px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 59, 92, 0.15);
+      border: 1px solid rgba(255, 59, 92, 0.4);
+      color: var(--red);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      padding: 5px 12px;
+      border-radius: 3px;
+      margin-bottom: 28px;
+      text-transform: uppercase;
+    }
+
+    .badge .dot {
+      width: 7px; height: 7px;
+      background: var(--red);
+      border-radius: 50%;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.7); }
+    }
+
+    h1 {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: clamp(38px, 8vw, 58px);
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+
+    h1 .accent { color: var(--neon); }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 48px;
+      letter-spacing: 0.02em;
+    }
+
+    .input-group {
+      position: relative;
+      margin-bottom: 16px;
+    }
+
+    .input-label {
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-wrap::before {
+      content: '>';
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--neon);
+      font-size: 16px;
+      font-weight: 700;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      font-size: 16px;
+      padding: 16px 16px 16px 40px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+      letter-spacing: 0.02em;
+    }
+
+    input[type="text"]::placeholder {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    input[type="text"]:focus {
+      border-color: var(--neon);
+      box-shadow: 0 0 0 3px rgba(0, 245, 160, 0.1), inset 0 0 20px rgba(0, 245, 160, 0.03);
+      background: #0d1219;
+    }
+
+    .char-count {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 11px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .hint {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 10px;
+      letter-spacing: 0.03em;
+    }
+
+    .hint span {
+      color: var(--neon2);
+    }
+
+    .btn {
+      width: 100%;
+      margin-top: 32px;
+      background: var(--neon);
+      color: #050807;
+      border: none;
+      border-radius: 6px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 16px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0, 245, 160, 0.35);
+    }
+
+    .btn:hover::before { opacity: 1; }
+
+    .btn:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 8px rgba(0, 245, 160, 0.2);
+    }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 40px 0 20px;
+    }
+
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .divider span {
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .examples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .example-chip {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.03em;
+    }
+
+    .example-chip:hover {
+      border-color: var(--neon2);
+      color: var(--neon2);
+      background: rgba(0, 217, 245, 0.06);
+    }
+
+    .footer-text {
+      margin-top: 48px;
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    .footer-text span {
+      color: var(--neon);
+    }
+  </style>
+</head>
+<body>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+
+  <div class="container">
+    <div class="badge"><span class="dot"></span> StreamFocus AI</div>
+
+    <h1>Name Your<br/><span class="accent">Session.</span></h1>
+    <p class="subtitle">The AI will watch your screen and keep<br/>your Twitch chat hyped — or roast you.</p>
+
+    <div class="input-group">
+      <label class="input-label" for="sessionInput">Session Name</label>
+      <div class="input-wrap">
+        <input
+          type="text"
+          id="sessionInput"
+          maxlength="40"
+          placeholder="e.g. study session, coding grind..."
+          autocomplete="off"
+          autocorrect="off"
+          spellcheck="false"
+        />
+        <span class="char-count" id="charCount">0/40</span>
+      </div>
+      <p class="hint">Try something specific — <span>"DSA leetcode grind"</span> beats <span>"studying"</span></p>
+    </div>
+
+    <button class="btn" id="startBtn" disabled onclick="startSession()">
+      Initialize Session →
+    </button>
+
+    <div class="divider"><span>Quick Start</span></div>
+
+    <div class="examples">
+      <button class="example-chip" onclick="fillExample('study session')">study session</button>
+      <button class="example-chip" onclick="fillExample('coding grind')">coding grind</button>
+      <button class="example-chip" onclick="fillExample('design sprint')">design sprint</button>
+      <button class="example-chip" onclick="fillExample('deep work')">deep work</button>
+      <button class="example-chip" onclick="fillExample('essay writing')">essay writing</button>
+      <button class="example-chip" onclick="fillExample('hackathon mode')">hackathon mode</button>
+    </div>
+
+    <p class="footer-text">Powered by <span>Gemini Vision</span> · Screencap analyzed every few seconds</p>
+  </div>
+
+  <script>
+    const input = document.getElementById('sessionInput');
+    const btn = document.getElementById('startBtn');
+    const charCount = document.getElementById('charCount');
+
+    input.addEventListener('input', () => {
+      const len = input.value.length;
+      charCount.textContent = `${len}/40`;
+      btn.disabled = input.value.trim().length < 2;
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !btn.disabled) startSession();
+    });
+
+    function fillExample(name) {
+      input.value = name;
+      input.dispatchEvent(new Event('input'));
+      input.focus();
+    }
+
+    function startSession() {
+      const name = input.value.trim();
+      if (!name) return;
+      localStorage.setItem('sessionName', name);
+      btn.textContent = 'Loading...';
+      btn.disabled = true;
+      window.location.href = 'session.html';
+    }
+
+    // Auto-focus
+    setTimeout(() => input.focus(), 400);
+  </script>
+</body>
+</html>
