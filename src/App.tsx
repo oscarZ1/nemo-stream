@@ -21,7 +21,6 @@ import { DonationAlert } from './components/DonationAlert';
 import { useScreenCapture } from './hooks/useScreenCapture';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useSpeech } from './hooks/useSpeech';
-import { useLiveAPI } from './hooks/useLiveAPI';
 
 // --- Types ---
 
@@ -119,37 +118,34 @@ const Footer = ({ state, onEnd }: { state: AppState; onEnd: () => void }) => (
   </footer>
 );
 
-const SessionScreen = ({ task, mockMode, speak, stream, latestFrame, stopCapture }: { task: string; mockMode: boolean; speak: (text: string) => void; key?: string; stream: MediaStream | null; latestFrame: string | null; stopCapture: () => void; }) => {
-  const { isConnected, messages, sessionState, latestDonation, sendFrame, injectEvent } = useWebSocket(mockMode, speak);
-  const { connect, sendFrame: sendLiveFrame, disconnect } = useLiveAPI((data) => {
-    if (data.events && Array.isArray(data.events)) {
-      data.events.forEach((event: any) => {
-        injectEvent(event);
-      });
-    }
-  });
-  const handleSendFrame = useCallback((frame: string) => {
-    if (mockMode) {
-      sendFrame(frame);
-    } else {
-      sendLiveFrame(frame);
-    }
-  }, [mockMode, sendFrame, sendLiveFrame]);
+const SessionScreen = ({ 
+  task, 
+  mockMode, 
+  speak,
+  stream,
+  latestFrame,
+  isCapturing,
+  stopCapture
+}: { 
+  task: string; 
+  mockMode: boolean; 
+  speak: (text: string) => void;
+  stream: MediaStream | null;
+  latestFrame: string | null;
+  isCapturing: boolean;
+  stopCapture: () => void;
+  key?: string;
+}) => {
+  const { isConnected, messages, sessionState, latestDonation, sendFrame } = useWebSocket(mockMode, speak);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  useEffect(() => {
-    if (!mockMode) connect();
-    return () => {
-      stopCapture();
-      if (!mockMode) disconnect();
-    };
-  }, []);
+  // Removed stopCapture from cleanup to prevent React 18 Strict Mode double-invoke from killing the stream
 
   useEffect(() => {
     if (latestFrame) {
-      handleSendFrame(latestFrame);
+      sendFrame(latestFrame);
     }
-  }, [latestFrame, handleSendFrame]);
+  }, [latestFrame, sendFrame]);
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -214,8 +210,6 @@ export default function App() {
   const [task, setTask] = useState('');
   const [mockMode, setMockMode] = useState(false);
   const { speak, isMuted, toggleMute } = useSpeech();
-  
-  // Hoisted screen capture hook, shared between Controls and Screen
   const { stream, latestFrame, isCapturing, startCapture, stopCapture } = useScreenCapture();
 
   useEffect(() => {
@@ -229,6 +223,7 @@ export default function App() {
   };
 
   const handleEnd = () => {
+    stopCapture();
     setState('home');
     setTask('');
   };
@@ -247,7 +242,16 @@ export default function App() {
           {state === 'home' ? (
             <SessionControls key="home" onStart={handleStart} startCapture={startCapture} />
           ) : (
-            <SessionScreen key="session" task={task} mockMode={mockMode} speak={speak} stream={stream} latestFrame={latestFrame} stopCapture={stopCapture} />
+            <SessionScreen 
+              key="session" 
+              task={task} 
+              mockMode={mockMode} 
+              speak={speak} 
+              stream={stream} 
+              latestFrame={latestFrame} 
+              isCapturing={isCapturing} 
+              stopCapture={stopCapture} 
+            />
           )}
         </AnimatePresence>
       </main>

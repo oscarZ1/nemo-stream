@@ -12,7 +12,7 @@ export function useLiveAPI(onEvent: (data: any) => void) {
         });
 
         sessionRef.current = await ai.live.connect({
-            model: "gemini-2.0-flash-live-001",
+            model: "gemini-3.1-flash-live-preview",
             config: {
                 responseModalities: [Modality.TEXT],
                 systemInstruction: SYSTEM_PROMPT,

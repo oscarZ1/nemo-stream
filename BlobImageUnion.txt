@@ -1,0 +1,4 @@
+type BlobImageUnion = Blob_2;
+
+/** Output only. The reason why the prompt was blocked. */
+export 

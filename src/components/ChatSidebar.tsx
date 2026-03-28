@@ -78,7 +78,7 @@ export function ChatSidebar({ messages }: ChatSidebarProps) {
         ))}
         {messages.length === 0 && (
           <div className="text-sm font-medium text-on-surface-variant/50 self-center m-auto text-center italic mt-4">
-            Connecting to chat...
+            Waiting for activity...
           </div>
         )}
       </div>

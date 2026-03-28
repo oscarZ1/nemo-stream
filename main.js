@@ -1,12 +1,12 @@
 import 'dotenv/config';
-import express from "express"; 
+import express from "express";
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const app = express(); 
-const port = 3000; 
-const apiKey = process.env.API_KEY; 
+const app = express();
+const port = 3000;
+const apiKey = process.env.API_KEY;
 
-app.use(express.json({limit: '15mb'})); 
+app.use(express.json({ limit: '15mb' }));
 
 const genAI = new GoogleGenerativeAI(apiKey);
 
@@ -18,7 +18,7 @@ app.post('/api/stream-state', async (req, res) => {
     const base64Data = imageBase64.replace(/^data:image\/(png|jpeg);base64,/, "");
 
     // 2. Initialize the model (Flash is significantly faster for live hackathon demos)
-    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-live-preview" });
 
     // 3. The Dynamic Prompt
     // We inject 'currentTask' so the AI knows exactly what you are supposed to be doing.
@@ -44,20 +44,20 @@ app.post('/api/stream-state', async (req, res) => {
     const result = await model.generateContent([prompt, ...imageParts]);
     const response = await result.response;
     const text = response.text();
-    
+
     // 5. Clean and parse the response to ensure it's valid JSON for your React app
     const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
     const chatData = JSON.parse(cleanJson);
-    
+
     res.json(chatData);
 
-}   catch (error) {
-        console.error("Gemini API Error:", error);
-        res.status(500).json({ error: 'Failed to analyze stream' });
+  } catch (error) {
+    console.error("Gemini API Error:", error);
+    res.status(500).json({ error: 'Failed to analyze stream' });
   }
 });
 
 app.listen(port, () => {
-    console.log(`Server is listening on port ${port}`);
+  console.log(`Server is listening on port ${port}`);
 })
 

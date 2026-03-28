@@ -1,0 +1,9 @@
+interface LiveSendRealtimeInputParameters {
+    /** Realtime input to send to the session. */
+    media?: BlobImageUnion;
+    /** The realtime audio input stream. */
+    audio?: Blob_2;
+    /**
+     Indicates that the audio stream has ended, e.g. because the microphone was
+     turned off.
+

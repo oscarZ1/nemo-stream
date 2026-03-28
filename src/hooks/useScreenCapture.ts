@@ -18,6 +18,8 @@ export function useScreenCapture() {
   useEffect(() => {
     videoRef.current = document.createElement('video');
     videoRef.current.autoplay = true;
+    videoRef.current.muted = true;
+    videoRef.current.playsInline = true;
     canvasRef.current = document.createElement('canvas');
     killedRef.current = false;
 
@@ -81,10 +83,12 @@ export function useScreenCapture() {
       globalPromise = promise;
       
       const mediaStream = await promise;
+      globalPromise = null; // Always reset immediately after resolution
 
       // If user clicked stop/unmounted BEFORE they accepted the prompt:
       if (killedRef.current) {
         mediaStream.getTracks().forEach(t => t.stop());
+        stateRef.current.capturing = false;
         return null; // silently discard
       }
 
@@ -93,12 +97,12 @@ export function useScreenCapture() {
       }
       
       stateRef.current.stream = mediaStream;
-      globalPromise = null;
       setStream(mediaStream);
       setIsCapturing(true);
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        videoRef.current.play().catch(e => console.warn('Autoplay prevented:', e));
       }
 
       mediaStream.getVideoTracks()[0].onended = () => {
@@ -108,7 +112,7 @@ export function useScreenCapture() {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
-      intervalRef.current = window.setInterval(captureFrame, 20_000);
+      intervalRef.current = window.setInterval(captureFrame, 15_000);
       
       setTimeout(captureFrame, 500);
       return mediaStream;

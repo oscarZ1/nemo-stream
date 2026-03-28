@@ -6,6 +6,7 @@ import { Play } from 'lucide-react';
 interface SessionControlsProps {
   onStart: (task: string, mockMode: boolean) => void;
   startCapture: () => Promise<MediaStream | null>;
+  key?: string;
 }
 
 export function SessionControls({ onStart, startCapture }: SessionControlsProps) {

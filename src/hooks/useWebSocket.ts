@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { GoogleGenAI, Modality } from '@google/genai';
 
 export type SessionState = 'focus' | 'slack';
 
@@ -24,26 +25,67 @@ export interface DonationEvent {
 
 export type WsEvent = ChatMessage | DonationEvent;
 
+const SYSTEM_PROMPT = `You are a live Twitch chat audience watching someone's computer screen in real time. You react to what you see on their screen like a real streaming audience would. You only respond with valid JSON — no other text, no markdown, no explanation.
+
+Classify the screen as:
+- "focus": code editor, terminal, notes, textbook, research papers, documentation, writing
+- "slack": YouTube, Netflix, social media, Reddit, games, memes, food delivery, anything non-productive
+
+You have these viewer archetypes. Generate usernames procedurally using [adjective]_[noun]_[number] format (e.g. lazy_panda42, grind_wolf99):
+- hype: celebrates focus, uses caps and exclamation marks, gets genuinely upset when streamer slacks
+- roaster: sarcastic, calls out slacking immediately, uses 💀 and "bro", short punchy messages
+- lurker: appears rarely, very short messages, oddly wise or completely random
+- grinder: competitive, references their own productivity, pushes streamer to work harder
+- whale: occasionally sends donations, financially invested in streamer's success
+
+Rules:
+- Messages must be under 8 words. Punchy. Real Twitch energy.
+- Include 2-4 chat events per response
+- Only include a donation when something notable happens. Max 1 donation per response.
+- The imageprompt for donations must describe a meme relevant to what's specifically visible on screen
+- Never break character. Never explain yourself. Only output valid JSON.
+
+Respond with exactly this shape:
+{
+  "state": "focus" | "slack",
+  "viewerCount": <integer starting at 12, increases when focus, decreases when slack>,
+  "events": [
+    {
+      "type": "chat",
+      "username": "grind_wolf99",
+      "archetype": "grinder",
+      "message": "bro I finished 3 chapters already",
+      "state": "focus"
+    },
+    {
+      "type": "donation",
+      "username": "dono_king_88",
+      "archetype": "whale",
+      "amount": 200,
+      "message": "caught in 4k switching to youtube",
+      "imageprompt": "student caught watching youtube instead of studying, distracted, meme format, funny",
+      "state": "slack"
+    }
+  ]
+}`;
+
 export function useWebSocket(mockMode: boolean, speak: (text: string) => void) {
   const [messages, setMessages] = useState<WsEvent[]>([]);
   const [sessionState, setSessionState] = useState<SessionState>('focus');
   const [isConnected, setIsConnected] = useState(false);
   const [latestDonation, setLatestDonation] = useState<DonationEvent | null>(null);
-  
-  const wsRef = useRef<WebSocket | null>(null);
+
+  const sessionRef = useRef<any>(null);
   const mockIntervalRef = useRef<number | null>(null);
-  
-  // Keep latest speak fn via ref to avoid reconnecting WS when mute swaps
+
   const speakRef = useRef(speak);
   useEffect(() => { speakRef.current = speak; }, [speak]);
 
-  // Helper to process text to speech rules
   const processSpeech = useCallback((event: WsEvent) => {
     if (event.type === 'donation') {
       speakRef.current(`${event.username} just donated ${event.amount} bits!`);
       return;
     }
-    
     if (event.type === 'chat') {
       if (event.archetype === 'roaster' && event.state === 'slack') {
         if (Math.random() < 0.33) speakRef.current(event.message);
@@ -53,170 +95,104 @@ export function useWebSocket(mockMode: boolean, speak: (text: string) => void) {
     }
   }, []);
 
-  const injectEvent = useCallback((eventData: any) => {
-    const newEvent = { ...eventData, id: crypto.randomUUID() } as WsEvent;
-    
-    setMessages(prev => [...prev, newEvent].slice(-50));
-    
-    if (newEvent.state && (newEvent.state === 'focus' || newEvent.state === 'slack')) {
-      setSessionState(newEvent.state);
-    }
-    
-    if (newEvent.type === 'donation') {
-      setLatestDonation(newEvent as DonationEvent);
-    }
+  const handleParsed = useCallback(async (parsed: any) => {
+    if (!parsed.events || !Array.isArray(parsed.events)) return;
+    const state: SessionState = parsed.state === 'slack' ? 'slack' : 'focus';
+    setSessionState(state);
 
-    processSpeech(newEvent);
+    for (const raw of parsed.events) {
+      if (raw.type !== 'chat' && raw.type !== 'donation') continue;
+      const event = { ...raw, id: crypto.randomUUID(), state } as WsEvent;
+
+      if (event.type === 'donation' && (raw as any).imageprompt) {
+        try {
+          const res = await fetch('http://localhost:8080/api/generate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: (raw as any).imageprompt }),
+          });
+          const json = await res.json();
+          (event as DonationEvent).imageUrl = json.imageUrl ?? '';
+        } catch (e) {
+          console.error('Image fetch failed:', e);
+        }
+        setLatestDonation(event as DonationEvent);
+      }
+
+      setMessages(prev => [...prev, event].slice(-50));
+      processSpeech(event);
+    }
   }, [processSpeech]);
 
-  // Connection logic
   useEffect(() => {
     if (mockMode) {
+      // ... (mock mode logic stays same)
       setIsConnected(true);
-      
-      let counter = 0;
       let active = true;
-      
       const fireMockEvent = () => {
         if (!active) return;
-        
-        counter++;
-        const isSlack = Math.random() > 0.5;
-        const fakeState: SessionState = isSlack ? 'slack' : 'focus';
-        
+        const fakeState: SessionState = Math.random() > 0.5 ? 'slack' : 'focus';
         const characters = [
-          { 
-            name: 'TurboStudyGoblin', 
-            archetype: 'hype',
-            quotes: ['LETS GOOO!!!', 'GRIND NEVER STOPS!', 'WAKE UP BRO!', 'WE GOT THIS!!!!!', 'NO BREAKS!!!', 'BRO YOU ARE INSANE'] 
-          },
-          { 
-            name: 'xX_Procrastinator_Xx', 
-            archetype: 'roaster',
-            quotes: ['bro really?', '💀💀💀', 'i would be sleeping now', 'caught in 4k slacking', 'gg rip focus', 'bro get back to work'] 
-          },
-          { 
-            name: 'quietlurker99', 
-            archetype: 'lurker',
-            quotes: ['...', 'focus.', 'breathe.', 'time is an illusion.', 'steady.'] 
-          },
-          { 
-            name: 'studygrind2026', 
-            archetype: 'grinder',
-            quotes: ['finished 3 chapters lol', 'is that all?', 'gonna beat your time', 'studying harder btw', 'ez pz'] 
-          },
-          { 
-            name: 'dono_king_88', 
-            archetype: 'whale',
-            quotes: ['TAKE MY MONEY', 'focus 10 mins for donos', 'dono incoming...', 'where is the hype?!', '💸💸💸'] 
-          }
+          { name: 'TurboStudyGoblin', archetype: 'hype', quotes: ['LETS GOOO!!!', 'GRIND NEVER STOPS!'] },
+          { name: 'xX_Procrastinator_Xx', archetype: 'roaster', quotes: ['bro really?', '💀💀💀'] },
         ];
-
-        // Pick a random named character
         const char = characters[Math.floor(Math.random() * characters.length)];
-
-        // Randomly decide if it's a chat or a donation
-        // Make donations much rarer since it fires every few seconds now (5% chance)
-        if (Math.random() > 0.95 && char.name === 'dono_king_88') {
-          const fakeDonation: DonationEvent = {
-            id: `mock-don-${counter}`,
-            type: 'donation',
-            username: char.name,
-            archetype: char.archetype,
-            amount: Math.floor(Math.random() * 5000) + 100,
-            message: char.quotes[Math.floor(Math.random() * char.quotes.length)],
-            imageUrl: `https://picsum.photos/seed/twitch-${counter}/300/300`,
-            state: fakeState,
-          };
-          
-          setMessages(prev => [...prev, fakeDonation].slice(-50));
-          setLatestDonation(fakeDonation);
-          setSessionState(fakeState);
-          processSpeech(fakeDonation);
-        } else {
-          const fakeChat: ChatMessage = {
-            id: `mock-chat-${counter}`,
-            type: 'chat',
-            username: char.name,
-            archetype: char.archetype,
-            message: char.quotes[Math.floor(Math.random() * char.quotes.length)],
-            state: fakeState,
-          };
-          
-          setMessages(prev => [...prev, fakeChat].slice(-50));
-          setSessionState(fakeState);
-          processSpeech(fakeChat);
-        }
-
-        // Fire again between 3000ms and 8000ms
-        const nextDelay = Math.random() * 5000 + 3000;
-        mockIntervalRef.current = window.setTimeout(fireMockEvent, nextDelay);
+        const fakeChat: ChatMessage = {
+          id: crypto.randomUUID(), type: 'chat', username: char.name, archetype: char.archetype,
+          message: char.quotes[Math.floor(Math.random() * char.quotes.length)], state: fakeState,
+        };
+        setMessages(prev => [...prev, fakeChat].slice(-50));
+        setSessionState(fakeState);
+        processSpeech(fakeChat);
+        mockIntervalRef.current = window.setTimeout(fireMockEvent, 5000);
       };
-
-      // Start the mock event chain
       fireMockEvent();
-
-      return () => {
-        active = false;
-        if (mockIntervalRef.current) {
-          clearTimeout(mockIntervalRef.current);
-          mockIntervalRef.current = null;
-        }
-        setIsConnected(false);
-      };
+      return () => { active = false; if (mockIntervalRef.current) clearTimeout(mockIntervalRef.current); };
     }
 
-    // Real WebSocket logic
-    const ws = new WebSocket('ws://localhost:3000');
-    wsRef.current = ws;
+    // --- REAL: Connect to YOUR local server relay ---
+    const socket = new WebSocket('ws://localhost:8080');
+    sessionRef.current = socket;
 
-    ws.onopen = () => setIsConnected(true);
-    
-    ws.onclose = () => setIsConnected(false);
-    
-    ws.onerror = (err) => console.error('WebSocket error:', err);
+    socket.onopen = () => {
+      console.log('Connected to local Nemo relay');
+      setIsConnected(true);
+    };
 
-    ws.onmessage = (event) => {
+    socket.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        
-        if (data.events && Array.isArray(data.events)) {
-          data.events.forEach((wsEventRaw: any) => {
-            if (wsEventRaw.type === 'chat' || wsEventRaw.type === 'donation') {
-              injectEvent(wsEventRaw);
-            }
-          });
-        }
-        
-        // Also support single object event (from earlier server tests)
-        if (data.type === 'chat' || data.type === 'donation') {
-          injectEvent(data);
-        }
-      } catch (err) {
-        console.error('Failed to parse WS message:', err);
+        const parsed = JSON.parse(event.data);
+        handleParsed(parsed);
+      } catch (e) {
+        console.error('Failed to parse relay message:', e);
       }
     };
 
-    return () => {
-      ws.close();
-      wsRef.current = null;
+    socket.onclose = () => {
+      console.log('Local relay disconnected');
       setIsConnected(false);
     };
-  }, [mockMode]);
+
+    socket.onerror = (err) => {
+      console.error('WebSocket error:', err);
+    };
+
+    return () => {
+      socket.close();
+      setIsConnected(false);
+    };
+  }, [mockMode, handleParsed, processSpeech]);
 
   const sendFrame = useCallback((base64: string) => {
-    if (mockMode) return; // Completely drop if mock mode
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'frame', data: base64 }));
-    }
+    if (mockMode || !sessionRef.current || sessionRef.current.readyState !== WebSocket.OPEN) return;
+    const b64 = base64.replace(/^data:image\/[a-z]+;base64,/, '');
+
+    // Send to your backend relay
+    sessionRef.current.send(JSON.stringify({
+      type: 'frame',
+      data: b64
+    }));
   }, [mockMode]);
 
-  return {
-    isConnected,
-    messages,
-    sessionState,
-    latestDonation,
-    sendFrame,
-    injectEvent,
-  };
+  return { isConnected, messages, sessionState, latestDonation, sendFrame };
 }
