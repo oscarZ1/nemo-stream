@@ -5,9 +5,10 @@ import { Play } from 'lucide-react';
 
 interface SessionControlsProps {
   onStart: (task: string, mockMode: boolean) => void;
+  startCapture: () => Promise<MediaStream | null>;
 }
 
-export function SessionControls({ onStart }: SessionControlsProps) {
+export function SessionControls({ onStart, startCapture }: SessionControlsProps) {
   const [task, setTask] = useState('');
   const [mockMode, setMockMode] = useState(false);
 
@@ -60,7 +61,13 @@ export function SessionControls({ onStart }: SessionControlsProps) {
 
       <div className="mt-16">
         <button 
-          onClick={() => task.trim() && onStart(task, mockMode)}
+          onClick={async () => {
+            if (!task.trim()) return;
+            // Route UI first so stream panel renders
+            onStart(task, mockMode);
+            // Initiate gesture-locked browser prompt
+            await startCapture();
+          }}
           disabled={!task.trim()}
           className="h-[4rem] px-[3rem] rounded-full bg-gradient-to-br from-primary to-primary-dim text-on-primary font-bold tracking-[0.1em] text-[0.85rem] uppercase flex items-center justify-center space-x-3 hover:scale-105 active:scale-95 transition-all duration-300 shadow-xl shadow-primary/20 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed group"
         >

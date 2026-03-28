@@ -5,12 +5,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  User, 
-  Music, 
-  Volume2, 
-  StopCircle, 
-  PauseCircle, 
+import {
+  User,
+  Music,
+  Volume2,
+  VolumeX,
+  StopCircle,
+  PauseCircle,
   ScreenShare,
 } from 'lucide-react';
 import { cn } from './lib/utils';
@@ -19,6 +20,8 @@ import { ChatSidebar } from './components/ChatSidebar';
 import { DonationAlert } from './components/DonationAlert';
 import { useScreenCapture } from './hooks/useScreenCapture';
 import { useWebSocket } from './hooks/useWebSocket';
+import { useSpeech } from './hooks/useSpeech';
+import { useLiveAPI } from './hooks/useLiveAPI';
 
 // --- Types ---
 
@@ -26,7 +29,7 @@ type AppState = 'home' | 'session';
 
 // --- Components ---
 
-const Header = ({ state }: { state: AppState }) => (
+const Header = ({ state, isMuted, toggleMute }: { state: AppState; isMuted: boolean; toggleMute: () => void }) => (
   <header className="fixed top-0 left-0 w-full flex justify-between items-center px-14 py-8 z-50">
     <div className="flex items-center space-x-4">
       <div className="text-lg font-bold tracking-[0.2em] text-on-surface uppercase">
@@ -43,11 +46,20 @@ const Header = ({ state }: { state: AppState }) => (
     </div>
     <div className="flex items-center space-x-6">
       {state === 'session' && (
-        <div className="flex items-center space-x-2 bg-surface-container-low px-4 py-2 rounded-full">
+        <div className="flex items-center space-x-2 bg-surface-container-low px-4 py-2 rounded-full mr-2">
           <div className="w-2 h-2 rounded-full bg-error animate-pulse" />
           <span className="text-[0.75rem] font-bold tracking-[0.08em] uppercase text-error-light">Live Recording</span>
         </div>
       )}
+      <button
+        onClick={toggleMute}
+        className={cn(
+          "transition-colors active:scale-90 p-2 rounded-full",
+          isMuted ? "text-error bg-error/10" : "text-primary bg-primary/10 hover:bg-primary/20"
+        )}
+      >
+        {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+      </button>
       <button className="text-on-surface-variant hover:opacity-80 transition-opacity cursor-pointer">
         <User size={24} />
       </button>
@@ -58,16 +70,16 @@ const Header = ({ state }: { state: AppState }) => (
 const Footer = ({ state, onEnd }: { state: AppState; onEnd: () => void }) => (
   <footer className={cn(
     "fixed bottom-10 left-1/2 -translate-x-1/2 rounded-full px-8 py-4 glass soft-shadow flex items-center z-50 transition-all duration-700 ease-in-out",
-    state === 'home' 
-      ? "opacity-0 translate-y-8 pointer-events-none" 
+    state === 'home'
+      ? "opacity-0 translate-y-8 pointer-events-none"
       : "opacity-100 translate-y-0 space-x-10 min-w-[600px] justify-between"
   )}>
     {state === 'session' && (
       <div className="flex items-center space-x-4 flex-1">
         <div className="w-10 h-10 rounded-lg bg-surface-container overflow-hidden flex-shrink-0">
-          <img 
-            src="https://picsum.photos/seed/nemo-music/100/100" 
-            alt="Album Art" 
+          <img
+            src="https://picsum.photos/seed/nemo-music/100/100"
+            alt="Album Art"
             className="w-full h-full object-cover grayscale"
             referrerPolicy="no-referrer"
           />
@@ -96,7 +108,7 @@ const Footer = ({ state, onEnd }: { state: AppState; onEnd: () => void }) => (
 
     {state === 'session' && (
       <div className="flex-1 flex justify-end">
-        <button 
+        <button
           onClick={onEnd}
           className="bg-error text-on-primary h-10 px-6 rounded-full text-[0.75rem] font-bold tracking-[0.08em] uppercase hover:opacity-90 active:scale-95 transition-all"
         >
@@ -107,23 +119,37 @@ const Footer = ({ state, onEnd }: { state: AppState; onEnd: () => void }) => (
   </footer>
 );
 
-const SessionScreen = ({ task, mockMode }: { task: string; mockMode: boolean; key?: string }) => {
-  const { stream, latestFrame, isCapturing, startCapture, stopCapture } = useScreenCapture();
-  const { isConnected, messages, sessionState, latestDonation, sendFrame } = useWebSocket(mockMode);
+const SessionScreen = ({ task, mockMode, speak, stream, latestFrame, stopCapture }: { task: string; mockMode: boolean; speak: (text: string) => void; key?: string; stream: MediaStream | null; latestFrame: string | null; stopCapture: () => void; }) => {
+  const { isConnected, messages, sessionState, latestDonation, sendFrame, injectEvent } = useWebSocket(mockMode, speak);
+  const { connect, sendFrame: sendLiveFrame, disconnect } = useLiveAPI((data) => {
+    if (data.events && Array.isArray(data.events)) {
+      data.events.forEach((event: any) => {
+        injectEvent(event);
+      });
+    }
+  });
+  const handleSendFrame = useCallback((frame: string) => {
+    if (mockMode) {
+      sendFrame(frame);
+    } else {
+      sendLiveFrame(frame);
+    }
+  }, [mockMode, sendFrame, sendLiveFrame]);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    startCapture();
+    if (!mockMode) connect();
     return () => {
       stopCapture();
+      if (!mockMode) disconnect();
     };
-  }, [startCapture, stopCapture]);
+  }, []);
 
   useEffect(() => {
     if (latestFrame) {
-      sendFrame(latestFrame);
+      handleSendFrame(latestFrame);
     }
-  }, [latestFrame, sendFrame]);
+  }, [latestFrame, handleSendFrame]);
 
   useEffect(() => {
     if (videoRef.current && stream) {
@@ -134,7 +160,7 @@ const SessionScreen = ({ task, mockMode }: { task: string; mockMode: boolean; ke
   const isSlack = sessionState === 'slack';
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -148,10 +174,10 @@ const SessionScreen = ({ task, mockMode }: { task: string; mockMode: boolean; ke
         isSlack && "border-2 border-error/50 shadow-2xl shadow-error/20"
       )}>
         {stream ? (
-          <video 
-            ref={videoRef} 
-            autoPlay 
-            muted 
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
             className="w-full h-full object-cover grayscale opacity-40 mix-blend-multiply"
           />
         ) : (
@@ -159,7 +185,7 @@ const SessionScreen = ({ task, mockMode }: { task: string; mockMode: boolean; ke
             Waiting for screen capture...
           </div>
         )}
-        
+
         <div className="absolute inset-x-0 top-0 p-8 flex justify-between pointer-events-none">
           <div>
             <div className="bg-surface-container-lowest/80 backdrop-blur-xl px-6 py-3 rounded-full inline-flex items-center space-x-3">
@@ -187,6 +213,10 @@ export default function App() {
   const [state, setState] = useState<AppState>('home');
   const [task, setTask] = useState('');
   const [mockMode, setMockMode] = useState(false);
+  const { speak, isMuted, toggleMute } = useSpeech();
+  
+  // Hoisted screen capture hook, shared between Controls and Screen
+  const { stream, latestFrame, isCapturing, startCapture, stopCapture } = useScreenCapture();
 
   useEffect(() => {
     console.log('StreamerMode focus app mounted');
@@ -210,14 +240,14 @@ export default function App() {
         <div className="w-[800px] h-[800px] rounded-full bg-gradient-to-tr from-primary/10 to-transparent blur-[120px]" />
       </div>
 
-      <Header state={state} />
+      <Header state={state} isMuted={isMuted} toggleMute={toggleMute} />
 
       <main className="flex-1 w-full flex items-center justify-center relative z-auto h-full">
         <AnimatePresence mode="wait">
           {state === 'home' ? (
-            <SessionControls key="home" onStart={handleStart} />
+            <SessionControls key="home" onStart={handleStart} startCapture={startCapture} />
           ) : (
-            <SessionScreen key="session" task={task} mockMode={mockMode} />
+            <SessionScreen key="session" task={task} mockMode={mockMode} speak={speak} stream={stream} latestFrame={latestFrame} stopCapture={stopCapture} />
           )}
         </AnimatePresence>
       </main>
